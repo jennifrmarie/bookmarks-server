@@ -2,18 +2,55 @@ const express = require('express')
 const uuid = require('uuid/v4')
 const logger = require('../logger')
 const { bookmark } = require('../store')
+const BookmarksService = require('./bookmarks-service')
 
 const bookmarksRouter = express.Router()
 const bodyParser = express.json()
 
+const serializeBookmark = bookmark => ({
+  
+  id: bookmark.id,
+  title: bookmark.title,
+  url: bookmark.url,
+  description: bookmark.description,
+  rating: Number(bookmark.rating),
+})
+
+
+
 bookmarksRouter
   .route('/bookmarks')
-  .get((req, res) => {
-    res
-    .json(bookmark)
+  .get((req, res, next) => {
+    const knexInstance = req.app.get('db')
+    BookmarksService.getAllBookmarks(knexInstance)
+      .then(bookmarks => {
+        res.json(bookmarks.map(bookmark => ({
+          id: bookmark.id,
+          title: bookmark.title,
+          url: bookmark.url,
+          description: bookmark.description,
+          rating: bookmark.rating
+        })))
+      })
+      .catch(next)
   })
-  .post(bodyParser, (req, res) => {
-    const { title, description, rating } = req.body;
+  .post(bodyParser, (req, res, next) => {
+    console.log('A')
+    const { title, description, url, rating } = req.body
+    const newBookmark = { title, description, url, rating }
+    BookmarksService.insertBookmark(
+      
+      req.app.get('db'),
+      newBookmark
+    )
+      .then(bookmark => {
+        console.log('B')
+        res
+          .status(201)
+          .location(`/bookmarks/${bookmark.id}`)
+          .json(serializeBookmark(bookmark))
+      })
+      .catch(next)
     if (!title) {
       logger.error('Title is required')
       return res
@@ -52,7 +89,7 @@ bookmarksRouter
 
 bookmarksRouter
   .route('/bookmarks/:id')
-  .get((req, res) => {
+  .get((req, res, next) => {
     const { id } = req.params;
     const bookmarks = bookmark.find(b => b.id == id)
   
@@ -60,13 +97,14 @@ bookmarksRouter
       logger.error(`Bookmark with id ${id} not found`)
       return res
         .status(404)
-        .send('Card not found')
+        .send('Bookmark not found')
     }
   
     res.json(bookmarks)
+    .catch(next)
   })
 
-  .delete((req, res) => {
+  .delete((req, res, next) => {
     const { id } = req.params
     const bookmarkIndex = bookmark.findIndex(b => b.id == id)
   
